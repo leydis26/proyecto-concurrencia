@@ -1,5 +1,6 @@
 #ifndef INT_LL_H
 #define INT_LL_H
+#include "pthread.h"
 // node
 struct node
 {
@@ -13,6 +14,7 @@ typedef struct _integer_linked_list_t
     struct node *head;
     // total of elements stored in the linked list
     int size;
+    pthread_mutex_t locker;
 } int_ll_t;
 
 // Init list structure
