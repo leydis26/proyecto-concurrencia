@@ -3,9 +3,7 @@
 #include <stdlib.h>
 
 #include "list.h"
-#include "pthread.h"
 
-pthread_mutex_t locker;
 // Init list structure
 int init_list(int_ll_t *list)
 {
@@ -14,14 +12,14 @@ int init_list(int_ll_t *list)
     list->head->index = -1;
 
     list->head->next = NULL;    
-    pthread_mutex_init(&locker,NULL);
+    pthread_mutex_init(&list->locker,NULL);
     return 0;
 }
 
 // Free list structure
 int free_list(int_ll_t *list)
 {    
-    pthread_mutex_lock(&locker);
+    pthread_mutex_lock(&list->locker);
     struct node *previous = list->head->next;
     int curr_index = previous->index;
 
@@ -35,7 +33,7 @@ int free_list(int_ll_t *list)
 
     free(list->head);
     free(list);
-    pthread_mutex_unlock(&locker);
+    pthread_mutex_unlock(&list->locker);
     return 0;
 }
 
@@ -57,14 +55,15 @@ int set_index_in_range(int_ll_t *list, int index){
 // Get element at index
 int index_list(int_ll_t *list, int index, int *out_value)
 {
-    pthread_mutex_lock(&locker);
+    pthread_mutex_lock(&list->locker);
     // if the linked list is empty
     if(list->size == 0)
     {
-        pthread_mutex_unlock(&locker);
+        pthread_mutex_unlock(&list->locker);
         return 1;
     }
     int new_index = set_index_in_range(list,index);
+    
 
     // find the element
     struct node *previous = list->head;    
@@ -75,12 +74,13 @@ int index_list(int_ll_t *list, int index, int *out_value)
         {
             // set the value of the element at curr_index
             *out_value = previous->value;
+            pthread_mutex_unlock(&list->locker);
             return 0;
         }
         previous = previous->next;
         curr_index ++;
     }
-    pthread_mutex_unlock(&locker);    
+    pthread_mutex_unlock(&list->locker);    
     return 1;    
 }
 
@@ -97,7 +97,6 @@ void insert_at_index(int_ll_t *list, int pos, int value)
     {
         if(curr_index == pos)
         {
-            current->index = curr_index;
             current->value = value;            
         }else if(curr_index < pos){
             current->value = current->next->value;
@@ -110,28 +109,40 @@ void insert_at_index(int_ll_t *list, int pos, int value)
 // Insert element at index
 int insert_list(int_ll_t *list, int index, int value)
 {
-    pthread_mutex_lock(&locker);
+    pthread_mutex_lock(&list->locker);
     // if the linked list is empty
     if(list->size == 0){
         list->head->index = 0;
         list->head->value = value;
         list->size ++;
-        pthread_mutex_unlock(&locker);
+        pthread_mutex_unlock(&list->locker);
         return 0;
     }
-    int new_index = set_index_in_range(list,index);
-    insert_at_index(list,new_index,value);
-    pthread_mutex_unlock(&locker);
+
+    if (index < 0)
+    {
+        index = 0;
+    }
+    if (index > list->size)
+    {
+        index = list->size;
+    }
+    
+    // int new_index = set_index_in_range(list,index);
+    insert_at_index(list,index,value);
+    pthread_mutex_unlock(&list->locker);
     return 0;
 }
+
 void remove_at_index(int_ll_t *list, int pos, int *out_value)
 {
-        // remove the first element in the linked list
+    // remove the first element in the linked list
     // if the linked list size is 1 
     // else if the linked size is greater than 1
     if(list->size == 1 && pos == 0)
     {
-        *out_value = list->head->value;        
+        *out_value = list->head->value; 
+        list->head->value = -1;       
         list->size = 0;
         return;
     }else if(list->size > 1 && pos == 0)
@@ -149,51 +160,53 @@ void remove_at_index(int_ll_t *list, int pos, int *out_value)
         {
             current->index = i;
             current = current->next;            
-        }              
-        
+        }       
         return;
     }
     // search for the previous node in the linked list to pos
-    struct node *current = list->head;    
-    int curr_index = current->index;    
+    struct node *current = list->head;     
        
-    while (curr_index < list->size)
+    while (current->index < pos-1)
     {     
-        
-        if(curr_index + 1 == pos)
-        {               
-            
-            *out_value = current->next->value;
-            struct node *removed = current->next;            
-            current->next = current->next->next; 
-            // if the removed element is not the last element in the linked list
-            // update the index of the next reference   
-            if(curr_index + 1 != list->size - 1)
-            {
-                current->next->index = current->index + 1;
-            }                        
-            free(removed);   
-            break;                                                                       
-        } 
-
-        current = current->next;
-        curr_index = current->index;      
+        current = current->next;    
     }    
-    list->size --;      
+
+    *out_value = current->next->value;
+    struct node *removed = current->next;            
+    current->next = current->next->next; 
+    free(removed); 
+    list->size --; 
+    // if the removed element is not the last element in the linked list
+    // update the index of the next reference   
+    for (int i = current->index; i < list->size; i++)
+    {
+        current->index = i;
+        current = current->next;
+    }
 }
 // Remove element at index
 int remove_list(int_ll_t *list, int index, int *out_value)
 {
-    pthread_mutex_lock(&locker);
+    pthread_mutex_lock(&list->locker);
     // if the linked list is empty
     if(list->size == 0)
     {
-        pthread_mutex_unlock(&locker);
+        pthread_mutex_unlock(&list->locker);
         return 1;
     }
-    int new_index = set_index_in_range(list,index);
-    remove_at_index(list,new_index,out_value);
     
-    pthread_mutex_unlock(&locker);
+    if (index < 0)
+    {
+        index = 0;
+    }
+    if (index >= list->size)
+    {
+        index = list->size-1;
+    }
+    
+    
+    remove_at_index(list,index,out_value);
+    
+    pthread_mutex_unlock(&list->locker);
     return 0;
 }
